@@ -1,0 +1,4 @@
+# Default ignored files
+main.py
+setup.py
+*.pyc
