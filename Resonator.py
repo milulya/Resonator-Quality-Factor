@@ -16,8 +16,6 @@ class Resonator:
         self.Qls = {}
         self.Qcs = {}
         self.Qis = {}
-        self.Qis_uncorrected = {}
-        self.delays = {}
         self.asymmetrys = {}
         self.number_of_measurements = 0
 
@@ -31,12 +29,10 @@ class Resonator:
         self.Qls[name] = self.measurements[name].Ql
         self.Qcs[name] = np.abs(self.measurements[name].Qc)
         self.Qis[name] = self.measurements[name].Qi
-        self.Qis_uncorrected[name] = self.measurements[name].Qi_no_correction
-        self.delays[name] = self.measurements[name].delay
         self.asymmetrys[name] = self.measurements[name].asymmetry
         self.measurements_names = np.append(self.measurements_names, name)
 
-    def plot_values_dict(self, val_dict, ax=None, plot_type='plot', **kwargs):
+    def plot_values_dict(self, val_dict, ax=None, plot_type='plot', yscale='linear', **kwargs):
         return_vals = False
         if ax is None:
             return_vals = True
@@ -63,17 +59,26 @@ class Resonator:
             ax.plot(x_values[sorted_x_args], y_values, **kwargs)
         elif plot_type == 'scatter':
             ax.scatter(x_values[sorted_x_args], y_values, **kwargs)
-        elif plot_type =='log':
-            ax.plot(x_values[sorted_x_args], y_values, **kwargs)
-            ax.set_yscale('log')
-
         else:
             raise ValueError('plot_type argument is invalid')
+
+        ax.set_yscale(yscale)
 
         if return_vals is True:
             return fig, ax
 
     # def plot_measurement_parameter(self):
+
+    def get_msrmnt_atrr(self, attribute):
+
+        attributes = {} #[[name_, None] for name_ in self.measurements_names]
+        for i, name_ in enumerate(self.measurements_names):
+            attributes[name_] = getattr(self.measurements[name_], attribute)
+        return attributes
+
+
+
+
 
 
 class Measurement:
@@ -350,7 +355,7 @@ class Measurement:
 
         # calculating initial value for Ql
         try:
-            freq_truncated, z_truncated = self.truncate_data(width_multiplier=1)
+            freq_truncated, z_truncated = self.narrow_band(width_multiplier=1)
             delta_f = freq_truncated[-1] - freq_truncated[0]
         except ValueError:
             delta_f = frequencies[-1] - frequencies[0]
@@ -542,7 +547,7 @@ class Measurement:
         dictionary = dict((zip(headers, nparray)))
         return dictionary
 
-    def truncate_data(self, width_multiplier=4):
+    def narrow_band(self, width_multiplier=1):
         """
         this function truncate the data so all the oints will be closed enough to resosnace.
         it doing this by doing a rough estimation of the width |S21| line shape and takes the data to multipliers

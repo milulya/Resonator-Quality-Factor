@@ -2,3 +2,4 @@
 main.py
 setup.py
 *.pyc
+.idea
