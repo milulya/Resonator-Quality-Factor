@@ -470,7 +470,13 @@ class Measurement:
             xc, yc, r0 = self.fit_circle(z_data_)
             res = np.sqrt((z_data_.real - xc)**2 + (z_data_.imag - yc)**2) - r0
             return res
-        optimized = optimize.least_squares(residuals, self.delay_rough_estimation/2, bounds=(0, 100e-9), xtol=1e-12,
+        delay_upper_bound = 100e-9
+        if self.delay_rough_estimation <= delay_upper_bound:
+            initial_guess = self.delay_rough_estimation
+        else:
+            initial_guess = delay_upper_bound
+
+        optimized = optimize.least_squares(residuals, initial_guess/2, bounds=(0, delay_upper_bound), xtol=1e-12,
                                            ftol=1e-12)
         cable_delay = optimized.x[0]
         self.delay = cable_delay
