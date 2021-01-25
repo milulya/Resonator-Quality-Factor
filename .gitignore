@@ -1,5 +1,5 @@
 # Default ignored files
 main.py
-setup.py
+mysetup.py
 *.pyc
 .idea

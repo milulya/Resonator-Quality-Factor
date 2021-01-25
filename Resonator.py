@@ -136,7 +136,7 @@ class Measurement:
         self.calculate_errors()
 
         if plot_data is True:
-            # phase fir plot
+            # phase fit plot
             plt.figure()
             plt.plot(self.frequencies, origin_phase, label='Phase')
             plt.plot(self.frequencies, self.theta_0 + 2. * np.arctan(2. * self.Ql * (1 - self.frequencies / self.fr)),
@@ -145,6 +145,7 @@ class Measurement:
             plt.ylabel('Phase [Rad]')
             plt.suptitle('Fit of phase response\nfor the resonance circle translated to the origin')
             plt.legend()
+            plt.axvline(self.fr, color='black', alpha=0.5, ls='--', label='resonance')
             # cable delay correction plot
             plt.figure()
             plt.scatter(self.z_data_undelayed.real, self.z_data_undelayed.imag, label='Delay Corrected Data')
@@ -164,6 +165,7 @@ class Measurement:
             print(f'Total Quality factor is {self.Ql:.3E}\n'
                   f'Absolute value of coupling Quality factor Qc is {np.abs(self.Qc):.3E}\n'
                   f'Intrinsic Quality Factor is {self.Qi:.3E}\n'
+                  f'Intrinsic Quality Factor without assymtery correction is {self.Qi_no_correction:.3E}\n'
                   f'Resonance Frequency is {self.fr:.5E}')
 
         return self.Ql, self.Qc, self.Qi, self.fr
