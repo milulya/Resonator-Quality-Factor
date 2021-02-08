@@ -83,11 +83,11 @@ class Resonator:
 
 class Measurement:
 
-    def __init__(self, vna_csv_data_path=None, data_tuple=None):
+    def __init__(self, vna_csv_data_path=None, data_tuple=None, config = 'T', s_mat_element = '21'):
         if not (vna_csv_data_path is None):
             self.data_path = path.normpath(vna_csv_data_path)
             self.data_dictionary = self.vnacsvreader()
-            self.data_matrix_raw = self.dict2mat(self.data_dictionary)
+            self.data_matrix_raw = self.dict2mat(s_mat_element=s_mat_element, data_dict=self.data_dictionary)
             self.frequencies_raw = self.data_matrix_raw[:, 0]
             self.frequencies = self.frequencies_raw
             self.z_data_raw = self.data_matrix_raw[:, 1] + 1j*self.data_matrix_raw[:, 2]
@@ -97,6 +97,10 @@ class Measurement:
             self.z_data_raw = data_tuple[1]
         else:
             raise(ValueError('no data has given, supply path to csv or tuple in the format: (frequencies, z_data)'))
+        if config == 'T' or config.lower()=="circulator":
+            self.config = config
+        else:
+            rasie(ValueError('setup configuration is not clear, specift "T" or "circulator"'))
         self.z_data_undelayed = None
         self.z_data_calibrated = None
         self.z_data_generated = None
@@ -112,6 +116,7 @@ class Measurement:
         self.fr = None
         self.theta_0 = None
         self.asymmetry = None
+        self.kappa = None
         self.mse = None
         self.name = None
 
@@ -130,8 +135,9 @@ class Measurement:
         self.Qc, self.Qi = self.calculate_quality_factors()
         # generating synthetic data according to the model theory using parameters calculated in the above code
         gen = DataGen(self.Ql, np.abs(self.Qc), self.asymmetry, self.frequencies, self.fr, np.abs(self.env_factor),
-                      np.angle(self.env_factor), self.delay)
+                      np.angle(self.env_factor), self.delay, config=self.config)
         self.z_data_generated = gen.z_data_env
+
         # calculating erros
         self.calculate_errors()
 
@@ -163,7 +169,8 @@ class Measurement:
 
         if verbose is True:
             print(f'Total Quality factor is {self.Ql:.3E}\n'
-                  f'Absolute value of coupling Quality factor Qc is {np.abs(self.Qc):.3E}\n'
+                  f'Absolute Value of coupling quality factor is {np.abs(self.Qc):.3E}\n'
+                  f'Real Part of coupling Quality factor Qc is {self.Qc.real:.3E}\n'
                   f'Intrinsic Quality Factor is {self.Qi:.3E}\n'
                   f'Intrinsic Quality Factor without assymtery correction is {self.Qi_no_correction:.3E}\n'
                   f'Resonance Frequency is {self.fr:.5E}')
@@ -183,7 +190,10 @@ class Measurement:
         return self.mse
 
     def calculate_quality_factors(self):
-        abs_Qc = self.Ql / (2*self.calibrated_circle['r0'])
+        if self.config == 'T':
+            abs_Qc = self.Ql / (2*self.calibrated_circle['r0'])
+        elif self.config == 'circulator':
+            abs_Qc = self.Ql / (self.calibrated_circle['r0'])
         # calculating the asymmetry phi
         # shifting the off resonance point to the origin
         xc = self.calibrated_circle['xc'] - 1
@@ -377,7 +387,6 @@ class Measurement:
 
         # making first a fit for each parameter separately, for better convergence
         for i, parameter in enumerate(initial_values):
-
             def residuals_partial(parameter, frequencies, phase):
                 initial_values[i] = parameter
                 return residuals(initial_values, frequencies, phase)
@@ -388,13 +397,10 @@ class Measurement:
         # final optimization for all parameters together starting with the values of independently fitted parameters
         optimized = optimize.least_squares(residuals, initial_values, args=(frequencies, phase), ftol=1e-12, xtol=1e-12)
         calculated_values = optimized['x']
-
         fr, theta_0, Ql = calculated_values
-
         self.fr = fr
         self.theta_0 = theta_0
         self.Ql = Ql
-
         return fr, theta_0, Ql, phase
 
     @staticmethod
@@ -484,22 +490,6 @@ class Measurement:
         self.delay = cable_delay
         return cable_delay
 
-    def dict2mat(self, data_dict=None):
-        if data_dict is None:
-            data_dict = self.data_dictionary
-        keys = data_dict.keys()
-        freqs = data_dict['Freq(Hz)']
-        for key in keys:
-            if 'REAL' in key:
-                real = data_dict[key]
-            elif 'IMAG' in key:
-                imag = data_dict[key]
-            else:
-                continue
-
-        data_mat = np.column_stack((freqs, real, imag))
-        return data_mat
-
     @staticmethod
     def correctdelay(frequencies, z_data, delay):
         delay_correction = np.exp(1j * 2. * np.pi * frequencies * delay)
@@ -531,6 +521,26 @@ class Measurement:
 
         """
         return (angle + np.pi) % (2*np.pi) - np.pi
+
+    def dict2mat(self, s_mat_element='21', data_dict=None):
+        if data_dict is None:
+            data_dict = self.data_dictionary
+        keys = data_dict.keys()
+        freqs = data_dict['Freq(Hz)']
+        for key in keys:
+            if ('REAL' in key) and (s_mat_element in key):
+                real = data_dict[key]
+            elif ('IMAG' in key) and (s_mat_element in key):
+                imag = data_dict[key]
+            else:
+                continue
+        try:
+            data_mat = np.column_stack((freqs, real, imag))
+        except UnboundLocalError as err:
+            print('data file is not matched with expected format (REAL IMAG or s matrix element')
+            raise err
+
+        return data_mat
 
     def vnacsvreader(self, csvpath=None, skiprows=6, droprows=2):
         """
@@ -587,3 +597,8 @@ class Measurement:
         truncated_z_data = z_data[np.logical_and(lowest_freq < frequencies, frequencies < highest_freq)]
 
         return truncated_freq, truncated_z_data
+
+    def smoth_mag_noise(self, sigma=5):
+        magnitude = gaussian_filter1d(np.abs(self.z_data_raw), sigma)
+        angle = gaussian_filter1d(np.angle(self.z_data_raw), sigma)
+        self.z_data_raw = magnitude*np.exp(1j*angle)

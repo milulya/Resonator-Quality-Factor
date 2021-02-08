@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 class DataGenerator:
 
-    def __init__(self, Ql, Qc, phi, frequencies, fr, a, alpha, delay):
+    def __init__(self, Ql, Qc, phi, frequencies, fr, a, alpha, delay, config='T'):
         self.Ql = Ql
         self.Qc = Qc
         self.phi = phi
@@ -17,14 +17,24 @@ class DataGenerator:
         self.z_data_env = None
         self.z_data_env_noise = None
         self.z_data_noise = None
-        self.resonance_circle()
+        if config == 'T' or config == "circulator":
+            self.config = config
+        else:
+            rasie(ValueError('setup configuration is not clear, specift "T" or "circulator"'))
+        self.resonance_circle(self.config)
         self.add_noise()
         self.add_environment()
 
-    def resonance_circle(self):
+
+    def resonance_circle(self, config):
         if not (self.z_data_circle is None):
             raise(AttributeError('data already exist, reset first'))
-        S21 = 1 - (self.Ql/self.Qc)/(1+2*1j*self.Ql*(self.frequencies/self.fr - 1))*np.exp(1j*self.phi)
+        if config == 'T':
+            S21 = 1 - (self.Ql / self.Qc) / (1 + 2 *1j*self.Ql * (self.frequencies / self.fr - 1)) * np.exp(
+                1j*self.phi)
+        elif config == 'circulator':
+            S21 = 1 - (2*self.Ql / self.Qc) / (1 + 2 * 1j*self.Ql * (self.frequencies / self.fr - 1)) * np.exp(
+                1j*self.phi)
         self.z_data_circle = S21
         return S21
 
