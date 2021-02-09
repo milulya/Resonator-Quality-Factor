@@ -189,6 +189,8 @@ class Measurement:
         self.mse = mse_x + mse_y
         return self.mse
 
+        # TODO: Calculate SNR
+
     def calculate_quality_factors(self):
         if self.config == 'T':
             abs_Qc = self.Ql / (2*self.calibrated_circle['r0'])
@@ -353,10 +355,10 @@ class Measurement:
 
         # z_data = self.correctdelay(frequencies, z_data, self.delay)
         # self.z_data_undelayed = z_data.copy()
-        # xc, yc, r0 = self.fit_circle(z_data)
+        xc, yc, r0 = self.fit_circle(z_data)
         # self.circle = {'xc': xc, 'yc': yc, 'r0': r0}
-        xc = self.circle['xc']
-        yc = self.circle['yc']
+        # xc = self.circle['xc']
+        # yc = self.circle['yc']
         z_data = z_data - np.complex(xc, yc)
         phase = np.unwrap(np.angle(z_data))
 
@@ -472,11 +474,13 @@ class Measurement:
         if z_data is None:
             z_data = self.z_data_raw
             frequencies = self.frequencies
-
+        # first part - clculate cable delay by minimizing the deviance from a shpae of a circle
         def residuals(delay):
             z_data_ = self.correctdelay(frequencies, z_data, delay[0])
             xc, yc, r0 = self.fit_circle(z_data_)
             res = np.sqrt((z_data_.real - xc)**2 + (z_data_.imag - yc)**2) - r0
+            # normalizing residulas for beeter convergence
+            res = res / r0
             return res
         delay_upper_bound = 100e-9
         if self.delay_rough_estimation <= delay_upper_bound:
@@ -485,8 +489,14 @@ class Measurement:
             initial_guess = delay_upper_bound
 
         optimized = optimize.least_squares(residuals, initial_guess/2, bounds=(0, delay_upper_bound), xtol=1e-12,
-                                           ftol=1e-12)
+                                           ftol=1e-12, gtol=1e-12)
         cable_delay = optimized.x[0]
+        # second part - fine adjumnets using phase response curve
+        z_data_undelayed = self.correctdelay(frequencies, z_data, cable_delay)
+        fr, theta_0, Ql, origin_phase = self.fit_phase(frequencies, z_data_undelayed)
+
+
+
         self.delay = cable_delay
         return cable_delay
 
