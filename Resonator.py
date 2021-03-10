@@ -19,10 +19,11 @@ class Resonator:
         self.asymmetrys = {}
         self.number_of_measurements = 0
 
-    def new_measurement(self, msrmnt_path, name):
+    def new_measurement(self, msrmnt_path, name, config='T', delay=None):
         self.measurements_path[name] = msrmnt_path
-        self.measurements[name] = Measurement(msrmnt_path)
+        self.measurements[name] = Measurement(msrmnt_path, config=config)
         self.measurements[name].name = name
+        self.measurements[name].delay = delay
         self.measurements[name].measure(plot_data=False, verbose=False)
         self.measurements[name].measurememt_number = self.number_of_measurements
         self.number_of_measurements = self.number_of_measurements + 1
@@ -83,7 +84,7 @@ class Resonator:
 
 class Measurement:
 
-    def __init__(self, vna_csv_data_path=None, data_tuple=None, config = 'T', s_mat_element = '21'):
+    def __init__(self, vna_csv_data_path=None, data_tuple=None, config='T', s_mat_element='21'):
         if not (vna_csv_data_path is None):
             self.data_path = path.normpath(vna_csv_data_path)
             self.data_dictionary = self.vnacsvreader()
@@ -122,8 +123,10 @@ class Measurement:
 
     def measure(self, plot_data=False, verbose=False):
         # self.plot_measured_data()
-        self.delay_rough_estimation, poly = self.estimate_cable_delay()
-        self.delay = self.calculate_cable_delay(self.frequencies, self.z_data_raw)
+        if self.delay is None:
+            self.delay_rough_estimation, poly = self.estimate_cable_delay()
+            self.delay = self.calculate_cable_delay(self.frequencies, self.z_data_raw)
+            
         self.z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, self.delay)
         # fitting circle to data after delay correction
         xc, yc, r0 = self.fit_circle(self.z_data_undelayed)
@@ -168,12 +171,12 @@ class Measurement:
             self.sanity_plot()
 
         if verbose is True:
-            print(f'Total Quality factor is {self.Ql:.3E}\n'
-                  f'Absolute Value of coupling quality factor is {np.abs(self.Qc):.3E}\n'
-                  f'Real Part of coupling Quality factor Qc is {self.Qc.real:.3E}\n'
-                  f'Intrinsic Quality Factor is {self.Qi:.3E}\n'
-                  f'Intrinsic Quality Factor without assymtery correction is {self.Qi_no_correction:.3E}\n'
-                  f'Resonance Frequency is {self.fr:.5E}')
+            print(f'Total Quality factor is {self.Ql:.6E}\n'
+                  f'Absolute Value of coupling quality factor is {np.abs(self.Qc):.6E}\n'
+                  f'Real Part of coupling Quality factor Qc is {self.Qc.real:.6E}\n'
+                  f'Intrinsic Quality Factor is {self.Qi:.6E}\n'
+                  f'Intrinsic Quality Factor without assymtery correction is {self.Qi_no_correction:.6E}\n'
+                  f'Resonance Frequency is {self.fr:.6E}')
 
         return self.Ql, self.Qc, self.Qi, self.fr
 
@@ -187,9 +190,16 @@ class Measurement:
         mse_x = np.sum((z_data_generated.real - z_data_raw.real)**2) / len(self.z_data_raw)
         mse_y = np.sum(z_data_generated.imag - z_data_raw.imag)**2 / len(self.z_data_raw)
         self.mse = mse_x + mse_y
-        return self.mse
 
-        # TODO: Calculate SNR
+        xc = self.circle['xc']
+        yc = self.circle['yc']
+        r0 = self.circle['r0']
+        var_array = (np.sqrt((self.z_data_undelayed.real - xc)**2 + (self.z_data_undelayed.imag - yc)**2)- r0)**2
+        sigma_r = np.sqrt(np.sum(var_array))
+        self.snr = r0 / sigma_r
+        return self.mse, self.snr
+
+
 
     def calculate_quality_factors(self):
         if self.config == 'T':
@@ -492,8 +502,8 @@ class Measurement:
                                            ftol=1e-12, gtol=1e-12)
         cable_delay = optimized.x[0]
         # second part - fine adjumnets using phase response curve
-        z_data_undelayed = self.correctdelay(frequencies, z_data, cable_delay)
-        fr, theta_0, Ql, origin_phase = self.fit_phase(frequencies, z_data_undelayed)
+        # z_data_undelayed = self.correctdelay(frequencies, z_data, cable_delay)
+        # fr, theta_0, Ql, origin_phase = self.fit_phase(frequencies, z_data_undelayed)
 
 
 
