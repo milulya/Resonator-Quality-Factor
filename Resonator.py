@@ -4,6 +4,8 @@ from scipy import linalg, optimize
 import matplotlib.pyplot as plt
 from scipy.ndimage.filters import gaussian_filter1d
 from generate import DataGenerator as DataGen
+import logger_module
+logger = logger_module.initialize_logger('Q_Factor')
 plt.style.use('ggplot')
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
@@ -120,6 +122,7 @@ class Measurement:
         self.kappa = None
         self.mse = None
         self.name = None
+        # logger.info('checking it out')
 
     def measure(self, plot_data=False, verbose=False):
         # self.plot_measured_data()
