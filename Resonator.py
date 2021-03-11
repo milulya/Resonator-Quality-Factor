@@ -10,6 +10,7 @@ plt.style.use('ggplot')
 colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
 
+bla bla bla
 class Resonator:
     def __init__(self):
         self.measurements_path = {}
