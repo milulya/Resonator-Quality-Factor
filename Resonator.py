@@ -136,7 +136,7 @@ class Measurement:
             self.delay = self.calculate_cable_delay(self.frequencies, z_data_undelayed)
         else:
             logger.info(f'cable delay given by user: {self.delay:.5E}')
-        delays = np.linspace(0,self.delay*5,int(1e3))
+        delays = np.linspace(0,1e-8,int(1e3))
         residues = np.zeros(len(delays))
 
         for i, delay in enumerate(delays):
