@@ -502,7 +502,7 @@ class Measurement:
             initial_guess = delay_upper_bound
 
         optimized = optimize.least_squares(residuals, initial_guess/2, bounds=(0, delay_upper_bound), xtol=1e-12,
-                                           ftol=1e-12, gtol=1e-12)
+                                           ftol=1e-12, gtol=1e-12, verbose=2)
         cable_delay = optimized.x[0]
         # second part - fine adjumnets using phase response curve
         # z_data_undelayed = self.correctdelay(frequencies, z_data, cable_delay)
