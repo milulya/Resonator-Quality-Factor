@@ -132,33 +132,11 @@ class Measurement:
         if self.delay is None:
             self.delay_rough_estimation, poly = self.estimate_cable_delay()
             logger.info(f'Rough estimation of cable delay is {self.delay_rough_estimation:.5E}')
-            z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, self.delay_rough_estimation)
-            self.delay = self.calculate_cable_delay(self.frequencies, z_data_undelayed)
+            self.delay = self.calculate_cable_delay(self.frequencies, self.z_data_raw)
         else:
             logger.info(f'cable delay given by user: {self.delay:.5E}')
-        delays = np.linspace(0,1e-8,int(1e3))
-        residues = np.zeros(len(delays))
-
-        for i, delay in enumerate(delays):
-            z_data_undelayed_ = self.correctdelay(self.frequencies, self.z_data_raw, delay)
-            z_data_norm = np.mean(np.abs(z_data_undelayed_))
-            z_data_normalized = z_data_undelayed_/z_data_norm
-            xc, yc, r0 = self.fit_circle(z_data_normalized)
-            res = np.sqrt((z_data_normalized.real - xc) ** 2 + (z_data_normalized.imag - yc) ** 2) - r0
-            # normalizing residulas for beeter convergence
-            res = res / np.min([r0, 1])
-            # full_circle_err = np.sum(np.unwrap([np.angle(z_data_normalized[i+1])-np.angle(z_data_normalized[i]) for i in range(len(z_data_normalized)-1)]))
-            limit_thetas = np.unwrap([np.angle(z_data_normalized[0]), np.angle(z_data_normalized[-1])])
-            full_circle_err =limit_thetas[0]-limit_thetas[1]
-            residues[i] = 0.5*np.sum(np.power(res,2))
 
         self.z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, self.delay)
-        ########
-        fig, ax = plt.subplots()
-        self.plot_circle(ax,  self.z_data_undelayed)
-        fig, ax = plt.subplots()
-        ax.scatter(delays, residues)
-        ######
         # fitting circle to data after delay correction
         xc, yc, r0 = self.fit_circle(self.z_data_undelayed)
         self.circle = {'xc': xc, 'yc': yc, 'r0': r0}
@@ -174,6 +152,7 @@ class Measurement:
 
         # calculating erros
         self.calculate_errors()
+        logger.info(f'Errors calculated, MSE:{self.mse:.5E}, SNR:{self.snr:.5E}')
 
         if plot_data is True:
             # phase fit plot
@@ -441,9 +420,6 @@ class Measurement:
         optimized = optimize.least_squares(residuals, initial_values, args=(frequencies, phase), ftol=1e-12, xtol=1e-12)
         calculated_values = optimized['x']
         fr, theta_0, Ql = calculated_values
-        self.fr = fr
-        self.theta_0 = theta_0
-        self.Ql = Ql
         return fr, theta_0, Ql, phase
 
     @staticmethod
@@ -517,9 +493,8 @@ class Measurement:
             frequencies = self.frequencies
         # normalize data
         # first part - clculate cable delay by minimizing the deviance from a shpae of a circle
-        residuals_array = []
-        delays_array = []
-        def residuals(delay):
+
+        def residuals(delay, frequencies, z_data):
             z_data_ = self.correctdelay(frequencies, z_data, delay[0])
             xc, yc, r0 = self.fit_circle(z_data_)
             # calculating the distance from radius of each point (will be zero for perfect circle)
@@ -527,28 +502,40 @@ class Measurement:
             # calculating the angle distance between the first and last points
             angles_at_limits = np.unwrap([np.angle(z_data_[0]), np.angle(z_data_[-1])])
             angle_distance = angles_at_limits[0] - angles_at_limits[1]
-            res = distance_from_radius/r0
-            residuals_array.append(0.5*res@res)
-            delays_array.append(delay)
+            # returning residuls while taking both circle parameters into accout:
+            # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
+            # by the radius to increase the value of the function
+            res = (distance_from_radius * angle_distance) / np.min([r0, 1])
             return res
-        delay_upper_bound =self.delay_rough_estimation*10
+        delay_upper_bound =100e-9
         if self.delay_rough_estimation <= delay_upper_bound:
             initial_guess = self.delay_rough_estimation
         else:
             initial_guess = delay_upper_bound
 
-        optimized = optimize.least_squares(residuals, initial_guess/2, bounds=(0, delay_upper_bound), xtol=5e-16,
-                                           ftol=1e-12, gtol=1e-12, verbose=2)
+        optimized = optimize.least_squares(residuals, initial_guess, args=(frequencies, z_data),
+                                           bounds=(0, delay_upper_bound), xtol=5e-16, ftol=1e-12, gtol=1e-12)
         cable_delay = optimized.x[0]
-        # second part - fine adjumnets using phase response curve
+        self.delay = cable_delay
+        # # second part - fine adjumnets using phase response curve
         # z_data_undelayed = self.correctdelay(frequencies, z_data, cable_delay)
         # fr, theta_0, Ql, origin_phase = self.fit_phase(frequencies, z_data_undelayed)
+        #
+        # def residuals_phase(delay):
+        #     z_data_ = self.correctdelay(frequencies, z_data_undelayed, delay[0])
+        #     xc, yc, r0 = self.fit_circle(z_data_)
+        #     z_data_ = z_data_ - np.complex(xc, yc)
+        #     phase = np.unwrap(np.angle(z_data_))
+        #     res = phase - origin_phase
+        #     return res
+        #
+        # optimized = optimize.least_squares(residuals_phase, cable_delay, bounds=(0.9*cable_delay, 1.1*cable_delay),
+        #                                    xtol=5e-16, ftol=1e-12, gtol=1e-12,verbose=2)
+        # cable_delay_fine = optimized.x[0]
 
 
         logger.info(f"Calculated cable delay is: {cable_delay:.5E}")
         self.delay = cable_delay
-        fig, ax = plt.subplots()
-        ax.scatter(delays_array,residuals_array)
         return cable_delay
 
     @staticmethod
