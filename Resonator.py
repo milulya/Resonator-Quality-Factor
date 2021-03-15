@@ -136,6 +136,28 @@ class Measurement:
         else:
             logger.info(f'cable delay given by user: {self.delay:.5E}')
 
+        # DEBUG
+        delays = np.linspace(0, 1e-8, int(1e3))
+        cost = np.zeros(len(delays))
+        for i, delay in enumerate(delays):
+            z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, delay)
+            xc, yc, r0 = self.fit_circle(z_data_undelayed)
+            # calculating the distance from radius of each point (will be zero for perfect circle)
+            distance_from_radius = np.sqrt((z_data_undelayed.real - xc) ** 2 + (z_data_undelayed.imag - yc) ** 2) - r0
+            # calculating the angle distance between the first and last points
+            angles_at_limits = np.unwrap([np.angle(z_data_undelayed[0]), np.angle(z_data_undelayed[-1])])
+            angle_distance = angles_at_limits[0] - angles_at_limits[1]
+            # returning residuls while taking both circle parameters into accout:
+            # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
+            # by the radius to increase the value of the function
+            res = (distance_from_radius * angle_distance)
+            cost[i] = 0.5*res@res
+            # cost[i] = 0.5*(angle_distance**2)
+        fig,ax = plt.subplots()
+        ax.scatter(delays, cost)
+        ax.set_title(f'{self.name}')
+
+
         self.z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, self.delay)
         # fitting circle to data after delay correction
         xc, yc, r0 = self.fit_circle(self.z_data_undelayed)
@@ -505,7 +527,7 @@ class Measurement:
             # returning residuls while taking both circle parameters into accout:
             # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
             # by the radius to increase the value of the function
-            res = (distance_from_radius * angle_distance) / np.min([r0, 1])
+            res = (distance_from_radius * angle_distance)
             return res
         delay_upper_bound =100e-9
         if self.delay_rough_estimation <= delay_upper_bound:
