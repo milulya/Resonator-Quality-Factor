@@ -27,7 +27,7 @@ class Resonator:
         self.measurements[name] = Measurement(msrmnt_path, config=config)
         self.measurements[name].name = name
         self.measurements[name].delay = delay
-        self.measurements[name].measure(plot_data=False, verbose=False)
+        self.measurements[name].measure(plot_data=False)
         self.measurements[name].measurememt_number = self.number_of_measurements
         self.number_of_measurements = self.number_of_measurements + 1
         self.Qls[name] = self.measurements[name].Ql
@@ -126,7 +126,7 @@ class Measurement:
         self.name = None
         # logger.info('checking it out')
 
-    def measure(self, plot_data=False, verbose=False):
+    def measure(self, plot_data=False):
         # self.plot_measured_data()
         logger.info(f"### Started new measurement calculation for measurement name:{self.name} ###")
         if self.delay is None:
@@ -156,6 +156,8 @@ class Measurement:
         # fig,ax = plt.subplots()
         # ax.scatter(delays, cost)
         # ax.set_title(f'{self.name}')
+
+        # # DEBUG
 
 
         self.z_data_undelayed = self.correctdelay(self.frequencies, self.z_data_raw, self.delay)
@@ -202,13 +204,15 @@ class Measurement:
             # data generated from calculated values plotted over measured data
             self.sanity_plot()
 
-        if verbose is True:
-            print(f'Total Quality factor is {self.Ql:.6E}\n'
-                  f'Absolute Value of coupling quality factor is {np.abs(self.Qc):.6E}\n'
-                  f'Real Part of coupling Quality factor Qc is {self.Qc.real:.6E}\n'
-                  f'Intrinsic Quality Factor is {self.Qi:.6E}\n'
-                  f'Intrinsic Quality Factor without assymtery correction is {self.Qi_no_correction:.6E}\n'
-                  f'Resonance Frequency is {self.fr:.6E}')
+
+            logger.info(f'\n######################\n'
+                        f'Results for Measurment :  {self.name}\n'
+                        f'Total Quality factor = {self.Ql:.6E}\n'
+                        f'Abs(Coupling Quality factor) = {np.abs(self.Qc):.6E}\n'
+                        f'Real(Coupling Quality factor) = {self.Qc.real:.6E}\n'
+                        f'Intrinsic Quality Factor = {self.Qi:.6E}\n'
+                        f'Resonance Frequency = {self.fr:.6E}\n'
+                        f'######################')
 
         return self.Ql, self.Qc, self.Qi, self.fr
 
@@ -510,36 +514,75 @@ class Measurement:
         :param z_data:
         :return:
         """
+        delay_upper_bound = 100e-9
+        
         if z_data is None:
             z_data = self.z_data_raw
             frequencies = self.frequencies
         # normalize data
-        # first part - clculate cable delay by minimizing the deviance from a shpae of a circle
-
-        def residuals(delay, frequencies, z_data):
-            z_data_ = self.correctdelay(frequencies, z_data, delay[0])
-            xc, yc, r0 = self.fit_circle(z_data_)
-            # calculating the distance from radius of each point (will be zero for perfect circle)
-            distance_from_radius = np.sqrt((z_data_.real - xc)**2 + (z_data_.imag - yc)**2) - r0
-            # calculating the angle distance between the first and last points
-            angles_at_limits = np.unwrap([np.angle(z_data_[0]), np.angle(z_data_[-1])])
-            angle_distance = angles_at_limits[0] - angles_at_limits[1]
-            # returning residuls while taking both circle parameters into accout:
-            # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
-            # by the radius to increase the value of the function
-            res = (distance_from_radius * angle_distance)
-            return res
-        delay_upper_bound =100e-9
+        # first part - clculate cable delay by minimizing the angle distance between the two parts of the signal
+        # def residuals(delay, frequencies, z_data):
+        #     z_data_ = self.correctdelay(frequencies, z_data, delay[0])
+        #     angles_at_limits = np.unwrap([np.angle(z_data_[0]), np.angle(z_data_[-1])])
+        #     angle_distance = angles_at_limits[0] - angles_at_limits[1]
+        #     res = angle_distance
+        #     
+        # 
         if self.delay_rough_estimation <= delay_upper_bound:
             initial_guess = self.delay_rough_estimation
         else:
             initial_guess = delay_upper_bound
+        if self.config == 'T':
+            def residuals(delay, frequencies, z_data):
+                z_data_ = self.correctdelay(frequencies, z_data, delay[0])
+                xc, yc, r0 = self.fit_circle(z_data_)
+                # calculating the distance from radius of each point (will be zero for perfect circle)
+                distance_from_radius = np.sqrt((z_data_.real - xc) ** 2 + (z_data_.imag - yc) ** 2) - r0
+                # calculating the angle distance between the first and last points
+                res = distance_from_radius / r0
+                return res
+            optimized = optimize.least_squares(residuals, initial_guess, args=(frequencies, z_data),
+                                               bounds=(0, delay_upper_bound), xtol=5e-16, ftol=5e-16, gtol=1e-12)
+            cable_delay = optimized.x[0]
 
-        optimized = optimize.least_squares(residuals, initial_guess, args=(frequencies, z_data),
-                                           bounds=(0, delay_upper_bound), xtol=5e-16, ftol=5e-16, gtol=1e-12)
-        cable_delay = optimized.x[0]
+        elif self.config == 'circulator':
+            def residuals(delay, frequencies, z_data):
+                z_data_ = self.correctdelay(frequencies, z_data, delay[0])
+                xc, yc, r0 = self.fit_circle(z_data_)
+                # calculating the distance from radius of each point (will be zero for perfect circle)
+                distance_from_radius = np.sqrt((z_data_.real - xc) ** 2 + (z_data_.imag - yc) ** 2) - r0
+                # calculating the angle distance between the first and last points
+                angles_at_limits = np.unwrap([np.angle(z_data_[0]), np.angle(z_data_[-1])])
+                angle_distance = angles_at_limits[0] - angles_at_limits[1]
+                # returning residuls while taking both circle parameters into accout:
+                # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
+                # by the radius to increase the value of the function
+                res = angle_distance
+                return res
+
+            optimized = optimize.least_squares(residuals, initial_guess, args=(frequencies, z_data),
+                                              bounds=(0, delay_upper_bound), xtol=5e-16, ftol=5e-16, gtol=1e-12)
+            cable_delay = optimized.x[0]
+            initial_guess = cable_delay
+
+            def residuals_(delay, frequencies, z_data):
+                z_data_ = self.correctdelay(frequencies, z_data, delay[0])
+                xc, yc, r0 = self.fit_circle(z_data_)
+                # calculating the distance from radius of each point (will be zero for perfect circle)
+                distance_from_radius = np.sqrt((z_data_.real - xc) ** 2 + (z_data_.imag - yc) ** 2) - r0
+                # calculating the angle distance between the first and last points
+                angles_at_limits = np.unwrap([np.angle(z_data_[0]), np.angle(z_data_[-1])])
+                angle_distance = angles_at_limits[0] - angles_at_limits[1]
+                # returning residuls while taking both circle parameters into accout:
+                # distance from radius and, and complition of a circle, in case of a small circle the residulas normalized
+                # by the radius to increase the value of the function
+                res = distance_from_radius
+                return res
+            optimized = optimize.least_squares(residuals_, initial_guess, args=(frequencies, z_data),
+                                           bounds=(0.9*initial_guess, 1.1*initial_guess), xtol=5e-16, ftol=5e-16, gtol=1e-12)
+            cable_delay = optimized.x[0]
+        
         self.delay = cable_delay
-
         logger.info(f"Calculated cable delay is: {cable_delay:.5E}")
         return cable_delay
 
