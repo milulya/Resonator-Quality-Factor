@@ -205,14 +205,15 @@ class Measurement:
             self.sanity_plot()
 
 
-            logger.info(f'\n######################\n'
-                        f'Results for Measurment :  {self.name}\n'
-                        f'Total Quality factor = {self.Ql:.6E}\n'
-                        f'Abs(Coupling Quality factor) = {np.abs(self.Qc):.6E}\n'
-                        f'Real(Coupling Quality factor) = {self.Qc.real:.6E}\n'
-                        f'Intrinsic Quality Factor = {self.Qi:.6E}\n'
-                        f'Resonance Frequency = {self.fr:.6E}\n'
-                        f'######################')
+        logger.info(f'\n######################\n'
+                    f'Results for Measurment :  {self.name}\n'
+                    f'Total Quality factor = {self.Ql:.6E} --> lifetime={self.Ql/(2*np.pi*self.fr):.6E}\n'
+                    # f'Abs(Coupling Quality factor) = {np.abs(self.Qc):.6E}\n'
+                    f'Coupling Quality factor = {self.Qc.real:.6E} '
+                    f'--> lifetime={self.Qc.real/(2*np.pi*self.fr):.6E}\n'
+                    f'Intrinsic Quality Factor = {self.Qi:.6E} --> lifetime={self.Qi/(2*np.pi*self.fr):.6E}\n'
+                    f'Resonance Frequency = {self.fr:.6E}\n'
+                    f'######################')
 
         return self.Ql, self.Qc, self.Qi, self.fr
 
